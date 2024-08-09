@@ -2,8 +2,13 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TimersRepository } from './timers.repository';
 import { MailService } from '../mail/mail.service';
+// TIme //
+import * as dayjs from 'dayjs';
+import * as utc from 'dayjs/plugin/utc';
 // Enums //
 import { TimerTypes } from './enums/timer-types';
+
+dayjs.extend(utc);
 
 @Injectable()
 export class TimersService {
@@ -24,16 +29,12 @@ export class TimersService {
       throw new HttpException('ტაიმერი ვერ მოიძებნა!', HttpStatus.NOT_FOUND);
     }
 
-    const now = new Date();
-
     if (
-      (timer.isActive && now.getTime() > timer.targetDate.getTime()) ||
-      timer.targetDate.getTime() == timer.lastPause.getTime()
+      (timer.isActive && !this.canPauseTimer(timer.targetDate)) ||
+      timer.lastPause.getTime() === timer.targetDate.getTime()
     ) {
       throw new HttpException('ტაიმერზე დრო აღარ გაქვს!', HttpStatus.FORBIDDEN);
-    }
-
-    if (timer.isActive && this.canPauseTimer(timer.lastPause) <= 10) {
+    } else if (timer.isActive && this.canPauseTimer(timer.lastPause) <= 10) {
       throw new HttpException(
         'ტაიმერზე დაპაუზება შესაძლებელია 10 წუთში ერთხელ!',
         HttpStatus.FORBIDDEN,
@@ -43,6 +44,7 @@ export class TimersService {
     if (!timer.isActive) {
       const otherTimerActive =
         await this.timersRepository.isUserTimerAlreadyActive(userId);
+
       if (otherTimerActive) {
         throw new HttpException(
           'სხვა ტაიმერი უკვე ჩართული გაქვს!',
@@ -53,36 +55,37 @@ export class TimersService {
 
     timer.isActive = !timer.isActive;
     if (timer.isActive) {
-      const secondsInStorage = Math.floor(
-        (timer.targetDate.getTime() - timer.lastPause.getTime()) / 1000,
-      );
-      timer.targetDate = new Date(now.getTime() + secondsInStorage * 1000);
+      const lastPause = dayjs(timer.lastPause).utc();
+      const targetDate = dayjs(timer.targetDate).utc();
+
+      const secondsInStorage = targetDate.diff(lastPause, 'second');
+
+      timer.targetDate = dayjs().utc().add(secondsInStorage, 'second').toDate();
 
       if (timer.user.parentEmail) {
-        this.mailService.sendTemplatedEmail(
+        await this.mailService.sendTemplatedEmail(
           'timeStart',
           [timer.user.parentEmail],
           {
             fullName: `${timer.user.firstName} ${timer.user.lastName}`,
             type: timer.type,
-            minutes: Math.floor(
-              (timer.targetDate.getTime() - now.getTime()) / 60000,
-            ),
+            minutes: targetDate.diff(lastPause, 'minutes'),
           },
         );
       }
     } else {
-      timer.lastPause = now;
+      timer.lastPause = dayjs().utc().toDate();
       if (timer.user.parentEmail) {
-        this.mailService.sendTemplatedEmail(
+        const lastPause = dayjs(timer.lastPause).utc();
+        const targetDate = dayjs(timer.targetDate).utc();
+
+        await this.mailService.sendTemplatedEmail(
           'timePause',
           [timer.user.parentEmail],
           {
             fullName: `${timer.user.firstName} ${timer.user.lastName}`,
             type: timer.type,
-            minutes: Math.floor(
-              (timer.targetDate.getTime() - now.getTime()) / 60000,
-            ),
+            minutes: targetDate.diff(lastPause, 'minutes'),
           },
         );
       }
@@ -116,9 +119,10 @@ export class TimersService {
       );
     }
 
-    timer.targetDate = new Date(
-      timer.targetDate.getTime() + minutes * timer.courseValue * 60000,
-    );
+    timer.targetDate = dayjs(timer.targetDate)
+      .utc()
+      .add(minutes, 'minute')
+      .toDate();
     timer.user.remainingMinutes -= minutes;
 
     await this.timersRepository.save(timer);
@@ -133,13 +137,13 @@ export class TimersService {
     const expiredTimers = await this.timersRepository.getExpiredTimers();
     const now = new Date();
 
-    const updates = expiredTimers.map((timer) => {
+    const updates = expiredTimers.map(async (timer) => {
       timer.isActive = false;
       timer.warningEmailSent = false;
       timer.lastPause = now;
       timer.targetDate = now;
 
-      this.mailService.sendTemplatedEmail(
+      await this.mailService.sendTemplatedEmail(
         'timeEnd',
         [timer.user.email, timer.user.parentEmail].filter(Boolean),
         {
@@ -147,7 +151,7 @@ export class TimersService {
           type: timer.type,
         },
       );
-      return this.timersRepository.save(timer);
+      return await this.timersRepository.save(timer);
     });
 
     await Promise.all(updates);
@@ -157,10 +161,10 @@ export class TimersService {
   async sendWarningMessage() {
     const timers = await this.timersRepository.getTimersWithin5Minutes();
 
-    const updates = timers.map((timer) => {
+    const updates = timers.map(async (timer) => {
       timer.warningEmailSent = true;
 
-      this.mailService.sendTemplatedEmail(
+      await this.mailService.sendTemplatedEmail(
         'timeWithInFiveMinutes',
         [timer.user.email],
         {
@@ -169,7 +173,7 @@ export class TimersService {
         },
       );
 
-      return this.timersRepository.save(timer);
+      return await this.timersRepository.save(timer);
     });
 
     await Promise.all(updates);
@@ -180,8 +184,8 @@ export class TimersService {
 
     newTimer.type = type;
     newTimer.userId = userId;
-    newTimer.lastPause = new Date();
-    newTimer.targetDate = new Date(Date.now() + 60000); // 1 minute from now
+    newTimer.lastPause = dayjs().utc().toDate();
+    newTimer.targetDate = dayjs().utc().add(1, 'minute').toDate();
 
     try {
       return await this.timersRepository.save(newTimer);
@@ -194,6 +198,9 @@ export class TimersService {
   }
 
   private canPauseTimer(lastPause: Date): number {
-    return Math.floor((Date.now() - lastPause.getTime()) / 60000);
+    if (!lastPause) return Infinity;
+    const now = dayjs().utc();
+    const lastPauseUTC = dayjs(lastPause).utc();
+    return now.diff(lastPauseUTC, 'minute');
   }
 }

@@ -6,11 +6,16 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Expose, plainToClass } from 'class-transformer';
+// TIme //
+import * as dayjs from 'dayjs';
+import * as utc from 'dayjs/plugin/utc';
 // DTos //
 import { LoginUserDto } from './dto/login-user.dto';
 // Repository And Service //
 import { UsersRepository } from '../users/users.repository';
 import { MailService } from '../mail/mail.service';
+
+dayjs.extend(utc);
 
 @Injectable()
 export class AuthService {
@@ -82,21 +87,22 @@ export class AuthService {
       );
     }
 
-    const timeDiff = Date.now() - (user.otpReportedAt?.getTime() || 0);
-    if (timeDiff < 10 * 60 * 1000) {
+    const timeDiff = this.isOtpOutDated(user.otpReportedAt);
+    if (user.otpReportedAt && timeDiff < 10) {
       throw new HttpException('დაელოდეთ 10 წუთი 😁', HttpStatus.FORBIDDEN);
     }
 
     user.otpCode = Math.floor(100000 + Math.random() * 900000);
     user.otpAttemptCount = 0;
-    user.otpReportedAt = new Date(Date.now());
+    user.otpReportedAt = dayjs().utc().toDate();
 
     await this.usersRepository.save(user);
 
-    this.mailService.sendTemplatedEmail('otpCode', [user.email], {
+    await this.mailService.sendTemplatedEmail('otpCode', [user.email], {
       fullName: `${user.firstName} ${user.lastName}`,
       otpCode: user.otpCode,
     });
+
     throw new HttpException('კოდი წარმატებით გაიგზავნა', HttpStatus.CREATED);
   }
 
@@ -160,9 +166,9 @@ export class AuthService {
 
   private isOtpOutDated(reportedAt: Date): number {
     if (!reportedAt) return Infinity;
-    const now = Date.now();
-    const otpTime = reportedAt.getTime();
-    return Math.floor((now - otpTime) / 60000);
+    const now = dayjs().utc();
+    const otpTime = dayjs(reportedAt).utc();
+    return now.diff(otpTime, 'minute');
   }
 }
 

@@ -56,7 +56,7 @@ export class UsersRepository {
     );
   }
 
-  create(data: Object) {
+  create(data: object) {
     return this.usersEntity.create(data);
   }
 

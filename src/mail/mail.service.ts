@@ -1,17 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import {
   GetSendQuotaCommand,
   SendTemplatedEmailCommand,
   SESClient,
 } from '@aws-sdk/client-ses';
 import * as dotenv from 'dotenv';
+import { Cron } from '@nestjs/schedule';
 
 dotenv.config();
 
 @Injectable()
-export class MailService {
+export class MailService implements OnModuleInit {
   private readonly sesClient: SESClient;
-  private sentMessagesCount: number = 0;
+  private sentMessagesCount: number = 999;
   private freeLimit = 195;
 
   constructor() {
@@ -22,6 +23,11 @@ export class MailService {
         secretAccessKey: process.env.AWS_MAIL_SECRET,
       },
     });
+  }
+  async onModuleInit() {
+    console.log('Initializing limits...');
+    await this.initLimits();
+    console.log('Limits initialized:', this.sentMessagesCount);
   }
 
   async sendTemplatedEmail(
@@ -35,13 +41,6 @@ export class MailService {
       TemplateData: JSON.stringify(templateData),
       Source: 'admin@epiccube.online',
     };
-
-    if (this.sentMessagesCount === 0) {
-      const response = await this.getSendQuota();
-      this.sentMessagesCount = Number(response.SentLast24Hours || 200);
-
-      console.log(`Your Have Already Send: ${this.sentMessagesCount} Emails`);
-    }
 
     if (this.sentMessagesCount < this.freeLimit) {
       this.sentMessagesCount++;
@@ -60,5 +59,12 @@ export class MailService {
     } catch (error) {
       console.error('Error fetching send quota:', error);
     }
+  }
+
+  @Cron('5 0 * * *')
+  private async initLimits() {
+    const response = await this.getSendQuota();
+
+    this.sentMessagesCount = Number(response ? response.SentLast24Hours : 200);
   }
 }
