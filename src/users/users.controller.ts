@@ -1,73 +1,75 @@
-import {Body, Controller, Delete, Get, Param, Post, Put, Query, Request, UseGuards} from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
+// Swagger UI //
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+// Roles-Guard //
+import { RolesGuard } from '../global/guards/role.guard';
+import { Roles } from '../global/guards/roles.decorator';
+import { UserRoles } from '../user-roles';
 // DTos //
-import {LoginDto} from "./dtos/login.dto";
-import {CreateUserDto} from "./dtos/create-user.dto";
-import {ChangeUserDto} from "./dtos/change-user.dto";
-// Roles //
-import {RolesGuard} from "../guards/role.guard";
-import {Roles} from "../guards/roles.decorator";
-import {UserRole} from "../user-role";
+import { SearchDto } from '../global/dto/search.dto';
+import { CreateUserDto } from './dto/create-user.dto';
 
 @Controller('users')
+@ApiTags('Users')
 @UseGuards(RolesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get("me")
-  @Roles(UserRole.user)
-  async getMe(@Request() req:any) {
-    return await this.usersService.getMe(req.user.id);
+  @Get('me')
+  @ApiOperation({ summary: 'Get My INFO (Get User Info)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns userInfo',
+    type: Object,
+  })
+  @Roles(UserRoles.user)
+  async getMe(@Request() req: any) {
+    return await this.usersService.getMyInfo(req.user.id);
   }
 
-  @Post("login")
-  async login(@Body() data: LoginDto) {
-    return await this.usersService.login(data);
-  }
-
-  // Admins Functions //
-
+  // Note: Admin Functions //
   @Get()
-  @Roles(UserRole.admin)
-  async getAllUsers(@Query("SearchByFullName") search?: string) {
-    return await this.usersService.getAllUsers(search);
+  @ApiOperation({ summary: 'Get Users' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns All Users (None Admins)',
+    type: Array,
+  })
+  @Roles(UserRoles.admin)
+  async getUsers(@Query() data?: SearchDto) {
+    return await this.usersService.getUsers(data?.search);
   }
 
-  @Get("admins")
-  @Roles(UserRole.admin)
-  async getAllAdmins(@Query("SearchByFullName") search?: string) {
-    return await this.usersService.getAllAdmins(search);
-  }
-
-  @Get(":id")
-  @Roles(UserRole.admin)
-  async getUser(@Param("id") id: number) {
-    return await this.usersService.getUser(id);
+  @Get('admin')
+  @ApiOperation({ summary: 'Get Admin Users' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns Only Admins',
+    type: Array,
+  })
+  @Roles(UserRoles.admin)
+  async getAdmins(@Query() data?: SearchDto) {
+    return await this.usersService.getAdmins(data?.search);
   }
 
   @Post()
-  @Roles(UserRole.admin)
+  @ApiOperation({ summary: 'Create New User' })
+  @ApiResponse({
+    status: 201,
+    description: 'Returns Success Message',
+    type: Object,
+  })
+  @Roles(UserRoles.admin)
   async createUser(@Body() data: CreateUserDto) {
     return await this.usersService.createUser(data);
   }
-
-
-  @Put(":id")
-  @Roles(UserRole.admin)
-  async changeUser(@Param("id") id: number, @Body() data: ChangeUserDto) {
-    return await this.usersService.changeUser(id, data);
-  }
-
-  @Delete("block/:id")
-  @Roles(UserRole.admin)
-  async blockUser(@Param("id") id: number) {
-      return await this.usersService.blockUser(id);
-  }
-
-  @Delete(":id")
-  @Roles(UserRole.admin)
-  async deleteUser(@Param("id") id: number) {
-    return await this.usersService.deleteUser(id);
-  }
-
 }

@@ -3,6 +3,6 @@ import { Injectable } from '@nestjs/common';
 @Injectable()
 export class AppService {
   getHello(): string {
-    return 'Hello World!';
+    return '🟦🔹LBX-Academy Backend Presents LBX-Academy💠🔚';
   }
 }

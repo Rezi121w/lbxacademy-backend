@@ -1,61 +1,70 @@
-import {Injectable} from "@nestjs/common";
-import {InjectRepository} from "@nestjs/typeorm";
-import {Repository} from "typeorm";
-// Entities //
-import {UserEntity} from "../entities/user.entity";
-// Dtos //
-import {CreateUserDto} from "./dtos/create-user.dto";
-import {UserRole} from "../user-role";
-
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UserEntity } from './entities/user.entity';
 
 @Injectable()
 export class UsersRepository {
-    constructor(@InjectRepository(UserEntity) private userEntity: Repository<UserEntity>) {}
+  constructor(
+    @InjectRepository(UserEntity) private usersEntity: Repository<UserEntity>,
+  ) {}
 
-    async findAllUsers() {
-        return await this.userEntity.findBy({role: UserRole.user});
+  async findUsers(search?: string) {
+    const query = this.usersEntity
+      .createQueryBuilder('user')
+      .where('user.role = :role', { role: 'user' });
+
+    if (search) {
+      query
+        .andWhere('user.email LIKE :search', { search: `%${search}%` })
+        .orWhere('user.firstName LIKE :search', { search: `%${search}%` })
+        .orWhere('user.lastName LIKE :search', { search: `%${search}%` });
     }
 
-    async searchStudents(search: string) {
-        return await this.userEntity.createQueryBuilder('user')
-            .where('user.userName LIKE :search', { search: `%${search}%` })
-            .andWhere('user.role = :role', { role: 'user' })
-            .getMany();
+    return await query.getMany();
+  }
+
+  async findAdmins(search?: string) {
+    const query = this.usersEntity
+      .createQueryBuilder('user')
+      .where('user.role = :role', { role: 'admin' });
+
+    if (search) {
+      query
+        .andWhere('user.email LIKE :search', { search: `%${search}%` })
+        .orWhere('user.firstName LIKE :search', { search: `%${search}%` })
+        .orWhere('user.lastName LIKE :search', { search: `%${search}%` });
     }
 
-    async findAllAdmins() {
-        return await this.userEntity.findBy({role: UserRole.admin});
-    }
+    return await query.getMany();
+  }
 
-    async searchAdmins(search: string) {
-        return await this.userEntity.createQueryBuilder('user')
-            .where('user.userName LIKE :search', { search: `%${search}%` })
-            .andWhere('user.role = :role', { role: 'admin' })
-            .getMany();
-    }
+  async findOneById(id: number) {
+    return await this.usersEntity.findOneBy({ id: id });
+  }
 
-    create(data: CreateUserDto) {
-        return this.userEntity.create(data);
-    }
+  async findOneByEmail(email: string) {
+    return await this.usersEntity.findOneBy({ email: email });
+  }
 
-    async save(user: UserEntity) {
-        user.userName = `${user.firstName} ${user.lastName}`;
+  async addDailyMinutes() {
+    await this.usersEntity.update(
+      {},
+      {
+        remainingMinutes: () => 'remainingMinutes + 40',
+      },
+    );
+  }
 
-        return await this.userEntity.save(user);
-    }
+  create(data: Object) {
+    return this.usersEntity.create(data);
+  }
 
-    async softDelete(id: number) {
-        await this.userEntity.softDelete(id);
-    }
+  async save(user: UserEntity) {
+    return await this.usersEntity.save(user);
+  }
 
-    // Find One //
-
-    async findOneByUserName(username: string) {
-        return await this.userEntity.findOneBy({userName: username});
-    }
-
-    async findOneById(id: number) {
-        return await this.userEntity.findOneBy({id: id});
-    }
-
+  async softDelete(id: number) {
+    return await this.usersEntity.softDelete(id);
+  }
 }

@@ -1,54 +1,58 @@
-import { ClassSerializerInterceptor, Module } from "@nestjs/common";
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import * as dotenv from 'dotenv';
+import { ScheduleModule } from '@nestjs/schedule';
 // TypeOrm Config //
-import { TypeOrmModule } from "@nestjs/typeorm";
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-// All Modules //
-import { UsersModule } from "./users/users.module";
 // __GUARDS__ //
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
-import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
-// Entities //
-import { UserEntity } from "./entities/user.entity";
-import {CourseEntity} from "./entities/course.entity";
-import {TechnologiesEntity} from "./entities/technologies.entity";
-import { CourseModule } from './course/course.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ClassSerializerInterceptor, Module } from '@nestjs/common';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+// All Modules //
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
+import { MailModule } from './mail/mail.module';
+import { TimersModule } from './timers/timers.module';
 
-
-
-const entities = [UserEntity, CourseEntity, TechnologiesEntity];
-dotenv.config();
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'mysql',
       host: process.env.MYSQL_HOST,
-      port: 3306,
+      port: 16076,
       username: process.env.MYSQL_USER,
       password: process.env.MYSQL_PASS,
       database: process.env.MYSQL_DBNAME,
-      entities: entities,
-      synchronize: true,
+      autoLoadEntities: true,
+      synchronize: true, // Only For Dev Mode //
     }),
     ThrottlerModule.forRoot([
       {
-        name: "SHORT",
-        ttl: 30000,
-        limit: 30,
+        name: 'AntiSpam',
+        ttl: 200,
+        limit: 5,
       },
       {
-        name: "LONG",
-        ttl: 900000,
-        limit: 200,
-      }
+        name: 'SHORT',
+        ttl: 30000,
+        limit: 100,
+      },
+      {
+        name: 'LONG',
+        ttl: 600000,
+        limit: 1000,
+      },
     ]),
+    MailModule,
+    AuthModule,
     UsersModule,
-    CourseModule],
+    TimersModule,
+  ],
   controllers: [AppController],
-  providers: [AppService,
+  providers: [
+    AppService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
@@ -59,5 +63,4 @@ dotenv.config();
     },
   ],
 })
-
 export class AppModule {}
