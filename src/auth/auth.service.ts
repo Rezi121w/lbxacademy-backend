@@ -6,16 +6,11 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Expose, plainToClass } from 'class-transformer';
-// DayJS Time //
-import * as dayjs from 'dayjs';
-import * as utc from 'dayjs/plugin/utc';
 // DTos //
 import { LoginUserDto } from './dto/login-user.dto';
 // Repository And Service //
 import { UsersRepository } from '../users/users.repository';
 import { MailService } from '../mail/mail.service';
-
-dayjs.extend(utc);
 
 @Injectable()
 export class AuthService {
@@ -25,7 +20,6 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  // Login Function //
   async login(data: LoginUserDto) {
     const user = await this.usersRepository.findOneByEmail(data.email);
 
@@ -37,6 +31,7 @@ export class AuthService {
     } else if (user.otpAttemptCount >= 5) {
       user.otpCode = null;
       user.otpAttemptCount = 0;
+      user.otpReportedAt = null;
 
       await this.usersRepository.save(user);
       throw new HttpException(
@@ -87,14 +82,14 @@ export class AuthService {
       );
     }
 
-    const timeElapsed = this.isOtpOutDated(user.otpReportedAt);
-    if (timeElapsed < 10) {
+    const timeDiff = Date.now() - (user.otpReportedAt?.getTime() || 0);
+    if (timeDiff < 10 * 60 * 1000) {
       throw new HttpException('დაელოდეთ 10 წუთი 😁', HttpStatus.FORBIDDEN);
     }
 
     user.otpCode = Math.floor(100000 + Math.random() * 900000);
     user.otpAttemptCount = 0;
-    user.otpReportedAt = dayjs.utc().toDate();
+    user.otpReportedAt = new Date(Date.now());
 
     await this.usersRepository.save(user);
 
@@ -105,7 +100,6 @@ export class AuthService {
     throw new HttpException('კოდი წარმატებით გაიგზავნა', HttpStatus.CREATED);
   }
 
-  // Refresh Token //
   async refreshToken(authorizationHeader: string) {
     if (!authorizationHeader) {
       throw new UnauthorizedException('UnAuthorized');
@@ -142,7 +136,6 @@ export class AuthService {
     });
   }
 
-  // Get Access Token Payload //
   async getAccessToken(authorizationHeader: string) {
     if (!authorizationHeader) {
       throw new UnauthorizedException('UnAuthorized');
@@ -165,10 +158,11 @@ export class AuthService {
     return payload;
   }
 
-  // Private //
-  private isOtpOutDated(otpReportedAt: Date) {
-    const otpReportedAtUTC = dayjs.utc(otpReportedAt);
-    return dayjs().utc().diff(otpReportedAtUTC, 'minute');
+  private isOtpOutDated(reportedAt: Date): number {
+    if (!reportedAt) return Infinity;
+    const now = Date.now();
+    const otpTime = reportedAt.getTime();
+    return Math.floor((now - otpTime) / 60000);
   }
 }
 

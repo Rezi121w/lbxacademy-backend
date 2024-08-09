@@ -2,13 +2,8 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TimersRepository } from './timers.repository';
 import { MailService } from '../mail/mail.service';
-// DayJS Time //
-import * as dayjs from 'dayjs';
-import * as utc from 'dayjs/plugin/utc';
 // Enums //
 import { TimerTypes } from './enums/timer-types';
-
-dayjs.extend(utc);
 
 @Injectable()
 export class TimersService {
@@ -19,21 +14,21 @@ export class TimersService {
 
   async getTimer(type: TimerTypes, userId: number) {
     const timer = await this.timersRepository.getTimer(type, userId);
-
-    if (!timer) {
-      return await this.createTimer(type, userId);
-    }
-
-    return timer;
+    return timer || (await this.createTimer(type, userId));
   }
 
   async changeActive(type: TimerTypes, userId: number) {
     const timer = await this.timersRepository.getTimer(type, userId);
 
+    if (!timer) {
+      throw new HttpException('ტაიმერი ვერ მოიძებნა!', HttpStatus.NOT_FOUND);
+    }
+
+    const now = new Date();
+
     if (
-      !timer ||
-      (timer.isActive && dayjs.utc().isAfter(timer.targetDate)) ||
-      timer.targetDate.getTime() === timer.lastPause.getTime()
+      (timer.isActive && now.getTime() > timer.targetDate.getTime()) ||
+      timer.targetDate.getTime() == timer.lastPause.getTime()
     ) {
       throw new HttpException('ტაიმერზე დრო აღარ გაქვს!', HttpStatus.FORBIDDEN);
     }
@@ -43,49 +38,54 @@ export class TimersService {
         'ტაიმერზე დაპაუზება შესაძლებელია 10 წუთში ერთხელ!',
         HttpStatus.FORBIDDEN,
       );
-    } else if (!timer.isActive) {
-      const OtherTimerActive =
+    }
+
+    if (!timer.isActive) {
+      const otherTimerActive =
         await this.timersRepository.isUserTimerAlreadyActive(userId);
-      if (OtherTimerActive)
+      if (otherTimerActive) {
         throw new HttpException(
           'სხვა ტაიმერი უკვე ჩართული გაქვს!',
           HttpStatus.FORBIDDEN,
         );
+      }
     }
-
-    // Note: Function //
 
     timer.isActive = !timer.isActive;
     if (timer.isActive) {
-      const lastPause = dayjs.utc(timer.lastPause);
-      const targetDate = dayjs.utc(timer.targetDate);
+      const secondsInStorage = Math.floor(
+        (timer.targetDate.getTime() - timer.lastPause.getTime()) / 1000,
+      );
+      timer.targetDate = new Date(now.getTime() + secondsInStorage * 1000);
 
-      const secondsInStorage = targetDate.diff(lastPause, 'second');
-
-      timer.targetDate = dayjs.utc().add(secondsInStorage, 'seconds').toDate();
-
-      timer.user.parentEmail &&
+      if (timer.user.parentEmail) {
         this.mailService.sendTemplatedEmail(
           'timeStart',
           [timer.user.parentEmail],
           {
             fullName: `${timer.user.firstName} ${timer.user.lastName}`,
             type: timer.type,
-            minutes: dayjs.utc(timer.targetDate).diff(dayjs.utc(), 'minute'),
+            minutes: Math.floor(
+              (timer.targetDate.getTime() - now.getTime()) / 60000,
+            ),
           },
         );
+      }
     } else {
-      timer.lastPause = dayjs.utc().toDate();
-      timer.user.parentEmail &&
+      timer.lastPause = now;
+      if (timer.user.parentEmail) {
         this.mailService.sendTemplatedEmail(
           'timePause',
           [timer.user.parentEmail],
           {
             fullName: `${timer.user.firstName} ${timer.user.lastName}`,
             type: timer.type,
-            minutes: dayjs.utc(timer.targetDate).diff(dayjs.utc(), 'minute'),
+            minutes: Math.floor(
+              (timer.targetDate.getTime() - now.getTime()) / 60000,
+            ),
           },
         );
+      }
     }
 
     await this.timersRepository.save(timer);
@@ -99,8 +99,10 @@ export class TimersService {
     const timer = await this.timersRepository.getTimer(type, userId);
 
     if (!timer) {
-      throw new HttpException('ტაიმერი ვერ მოიძებნა!', HttpStatus.FORBIDDEN);
-    } else if (timer.isActive) {
+      throw new HttpException('ტაიმერი ვერ მოიძებნა!', HttpStatus.NOT_FOUND);
+    }
+
+    if (timer.isActive) {
       throw new HttpException(
         'ტაიმერი უკვე ჩართულია და დროის დამატება შეუძლებელია!',
         HttpStatus.FORBIDDEN,
@@ -114,10 +116,9 @@ export class TimersService {
       );
     }
 
-    timer.targetDate = dayjs
-      .utc(timer.targetDate)
-      .add(minutes * timer.courseValue, 'minutes')
-      .toDate();
+    timer.targetDate = new Date(
+      timer.targetDate.getTime() + minutes * timer.courseValue * 60000,
+    );
     timer.user.remainingMinutes -= minutes;
 
     await this.timersRepository.save(timer);
@@ -127,27 +128,26 @@ export class TimersService {
     );
   }
 
-  // Note: CRON //
   @Cron('* * * * *')
   async checkTimers() {
     const expiredTimers = await this.timersRepository.getExpiredTimers();
-    const utc = dayjs.utc().toDate();
+    const now = new Date();
 
     const updates = expiredTimers.map((timer) => {
       timer.isActive = false;
       timer.warningEmailSent = false;
-      timer.lastPause = utc;
-      timer.targetDate = utc;
+      timer.lastPause = now;
+      timer.targetDate = now;
 
       this.mailService.sendTemplatedEmail(
         'timeEnd',
-        [timer.user.email, timer.user.parentEmail],
+        [timer.user.email, timer.user.parentEmail].filter(Boolean),
         {
           fullName: `${timer.user.firstName} ${timer.user.lastName}`,
           type: timer.type,
         },
       );
-      this.timersRepository.save(timer);
+      return this.timersRepository.save(timer);
     });
 
     await Promise.all(updates);
@@ -169,20 +169,19 @@ export class TimersService {
         },
       );
 
-      this.timersRepository.save(timer);
+      return this.timersRepository.save(timer);
     });
 
     await Promise.all(updates);
   }
 
-  // Note: Private //
   private async createTimer(type: TimerTypes, userId: number) {
     const newTimer = this.timersRepository.create();
 
     newTimer.type = type;
     newTimer.userId = userId;
-    newTimer.lastPause = dayjs.utc().toDate();
-    newTimer.targetDate = dayjs.utc().add(1, 'minute').toDate();
+    newTimer.lastPause = new Date();
+    newTimer.targetDate = new Date(Date.now() + 60000); // 1 minute from now
 
     try {
       return await this.timersRepository.save(newTimer);
@@ -194,8 +193,7 @@ export class TimersService {
     }
   }
 
-  private canPauseTimer(lastPause: Date) {
-    const lastPauseInUtc = dayjs.utc(lastPause);
-    return dayjs().utc().diff(lastPauseInUtc, 'minute');
+  private canPauseTimer(lastPause: Date): number {
+    return Math.floor((Date.now() - lastPause.getTime()) / 60000);
   }
 }

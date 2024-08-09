@@ -36,9 +36,10 @@ export class MailService {
       Source: 'admin@epiccube.online',
     };
 
-    if (this.sentMessagesCount === 0 || this.sentMessagesCount % 40 === 0) {
+    if (this.sentMessagesCount === 0) {
       const response = await this.getSendQuota();
       this.sentMessagesCount = Number(response.SentLast24Hours || 200);
+
       console.log(`Your Have Already Send: ${this.sentMessagesCount} Emails`);
     }
 
