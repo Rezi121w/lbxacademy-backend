@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            color: #333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: auto;
+            padding: 30px;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+        h1 {
+            font-size: 26px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        p {
+            font-size: 16px;
+            margin: 10px 0;
+            line-height: 1.6;
+            color: #555;
+        }
+        .otp-code {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffffff;
+            background: #007bff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: inline-block;
+        }
+        .highlight {
+            background-color: #e7f0ff;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            color: #333;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 14px;
+            color: #777;
+        }
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .timer {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ff0000;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+<div class="email-container">
+    <h1>OTP ერთჯერადი კოდი</h1>
+    <p>გამარჯობა {{fullName}},</p>
+    <p>თქვენი ერთჯერადი პაროლი (OTP) არის:</p>
+    <div class="otp-code">{{otpCode}}</div>
+    <p class="timer">კოდი მოქმედებს მხოლოდ <span id="timer">15:00</span} წუთის განმავლობაში.</p>
+    <p class="highlight">კოდი მოქმედებს მხოლოდ 15 წუთის განმავლობაში.</p>
+    <p>გთხოვთ გამოიყენოთ ეს კოდი თქვენი საიტზე შესვლის დამადასტურებლად.</p>
+    <p>თუ თქვენ არ მოითხოვეთ ეს კოდი, გთხოვთ დააიგნორეთ ეს წერილი.</p>
+    <div class="footer">
+        მადლობთ,<br>
+        <a href="https://portal.epiccube.online" target="_blank">EPICCUBE</a>
+    </div>
+</div>
+</body>
+</html>

@@ -59,33 +59,34 @@ export class TimersService {
       const targetDate = dayjs(timer.targetDate).utc();
 
       const secondsInStorage = targetDate.diff(lastPause, 'second');
-
       timer.targetDate = dayjs().utc().add(secondsInStorage, 'second').toDate();
 
-      if (timer.user.parentEmail) {
-        await this.mailService.sendTemplatedEmail(
-          'timeStart',
+      if (timer.user.parentEmail && timer.user.parentEmail.includes('@')) {
+        this.mailService.sendTemplatedEmail(
           [timer.user.parentEmail],
+          'სტუდენტის ტაიმერის შეტყობინება',
+          'timerStart',
           {
             fullName: `${timer.user.firstName} ${timer.user.lastName}`,
             type: timer.type,
-            minutes: targetDate.diff(lastPause, 'minutes'),
+            minutes: Math.floor(secondsInStorage / 60),
           },
         );
       }
     } else {
       timer.lastPause = dayjs().utc().toDate();
-      if (timer.user.parentEmail) {
+      if (timer.user.parentEmail && timer.user.parentEmail.includes('@')) {
         const lastPause = dayjs(timer.lastPause).utc();
         const targetDate = dayjs(timer.targetDate).utc();
 
         await this.mailService.sendTemplatedEmail(
-          'timePause',
           [timer.user.parentEmail],
+          'სტუდენტის ტაიმერის შეტყობინება',
+          'timerPause',
           {
             fullName: `${timer.user.firstName} ${timer.user.lastName}`,
             type: timer.type,
-            minutes: targetDate.diff(lastPause, 'minutes'),
+            minutes: targetDate.diff(lastPause, 'minute'),
           },
         );
       }
@@ -121,7 +122,7 @@ export class TimersService {
 
     timer.targetDate = dayjs(timer.targetDate)
       .utc()
-      .add(minutes, 'minute')
+      .add(minutes * timer.courseValue, 'minutes')
       .toDate();
     timer.user.remainingMinutes -= minutes;
 
@@ -135,23 +136,35 @@ export class TimersService {
   @Cron('* * * * *')
   async checkTimers() {
     const expiredTimers = await this.timersRepository.getExpiredTimers();
-    const now = new Date();
+    const now = dayjs().utc().toDate();
 
     const updates = expiredTimers.map(async (timer) => {
       timer.isActive = false;
       timer.warningEmailSent = false;
-      timer.lastPause = now;
-      timer.targetDate = now;
 
-      await this.mailService.sendTemplatedEmail(
-        'timeEnd',
-        [timer.user.email, timer.user.parentEmail].filter(Boolean),
+      const lastPause = dayjs(timer.lastPause).utc();
+      const targetDate = dayjs(timer.targetDate).utc();
+
+      this.mailService.sendTemplatedEmail(
+        [
+          timer.user.email,
+          timer.user.parentEmail && timer.user.parentEmail.includes('@')
+            ? timer.user.parentEmail
+            : '',
+        ],
+        'სტუდენტის ტაიმერის დასრულების შეტყობინება',
+        'timerEnd',
         {
           fullName: `${timer.user.firstName} ${timer.user.lastName}`,
           type: timer.type,
+          duration: targetDate.diff(lastPause, 'minute'),
         },
       );
-      return await this.timersRepository.save(timer);
+
+      timer.lastPause = now;
+      timer.targetDate = now;
+
+      return this.timersRepository.save(timer);
     });
 
     await Promise.all(updates);
@@ -164,16 +177,17 @@ export class TimersService {
     const updates = timers.map(async (timer) => {
       timer.warningEmailSent = true;
 
-      await this.mailService.sendTemplatedEmail(
-        'timeWithInFiveMinutes',
+      this.mailService.sendTemplatedEmail(
         [timer.user.email],
+        'სტუდენტო დაგრჩა 5 წუთი!',
+        'timerWarning',
         {
           fullName: `${timer.user.firstName} ${timer.user.lastName}`,
           type: timer.type,
         },
       );
 
-      return await this.timersRepository.save(timer);
+      return this.timersRepository.save(timer);
     });
 
     await Promise.all(updates);

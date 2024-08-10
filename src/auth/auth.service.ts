@@ -98,10 +98,15 @@ export class AuthService {
 
     await this.usersRepository.save(user);
 
-    await this.mailService.sendTemplatedEmail('otpCode', [user.email], {
-      fullName: `${user.firstName} ${user.lastName}`,
-      otpCode: user.otpCode,
-    });
+    this.mailService.sendTemplatedEmail(
+      [user.email],
+      'ერთჯერადი კოდი',
+      'otpCode',
+      {
+        fullName: `${user.firstName} ${user.lastName}`,
+        otpCode: user.otpCode,
+      },
+    );
 
     throw new HttpException('კოდი წარმატებით გაიგზავნა', HttpStatus.CREATED);
   }
